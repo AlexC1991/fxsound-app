@@ -357,6 +357,7 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
+<<<<<<< HEAD
 # Linux build output (added for this fork)
 build/
 build-appimage/
@@ -378,3 +379,5 @@ third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/googl
 # on Windows or macOS filesystems (CodeRook store). The lowercase duplicate is
 # left out; the capitalised "Work - Reckless (Ranzemyrryya).fac" is kept.
 Resources/Presets/Community/Work - reckless (Ranzemyrryya).fac
+
+dsp/linux/lc_headers/
