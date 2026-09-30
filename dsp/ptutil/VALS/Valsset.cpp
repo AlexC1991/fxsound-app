@@ -83,7 +83,12 @@ int PT_DECLSPEC valsSetComment(PT_HANDLE *hp_vals, wchar_t *wcp_comment)
 		return(NOT_OKAY);
 
 	/* Set the string */
-	swprintf(cast_handle->wcp_comment, sizeof(cast_handle->wcp_comment)/sizeof(*(cast_handle->wcp_comment)), L"%s", wcp_comment);
+	/* NOTE: use the allocated length, not sizeof(wcp_comment) -- that is a
+	 * wchar_t*, so sizeof yields 8 and the name has never actually been written
+	 * (the .fac then read back with its name line missing, which shifted every
+	 * field after it). %ls is also required: in a wide printf on glibc %s means
+	 * a narrow string, and Windows treats %s as wide, so %ls works on both. */
+	swprintf(cast_handle->wcp_comment, (size_t)(length + 1), L"%ls", wcp_comment);
 
 	return(OKAY);
 }

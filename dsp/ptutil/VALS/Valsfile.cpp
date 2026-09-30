@@ -85,8 +85,20 @@ int PT_DECLSPEC valsSave(PT_HANDLE *hp_vals, wchar_t *wcp_dir_path, wchar_t *wcp
 	if (wcp_dir_path == NULL)
 		return(NOT_OKAY);
 
-	/* Construct the fullpath */
-	swprintf(fullpath_str, sizeof(fullpath_str)/sizeof(*(fullpath_str)), L"%s\\%s", wcp_dir_path, wcp_filename);
+	/* Construct the fullpath.
+	 * Two portability traps here, both of which silently broke saving presets
+	 * on Linux (the GUI's "save preset" always failed):
+	 *   - in a wide printf on glibc, %s consumes a NARROW string; passing wide
+	 *     arguments produced garbage ("//T"), so the path must use %ls. Windows
+	 *     already treats %s as wide, so %ls works on both.
+	 *   - the separator was a hardcoded '\\', which POSIX filesystems do not
+	 *     treat as a directory separator.
+	 */
+#ifdef _WIN32
+	swprintf(fullpath_str, sizeof(fullpath_str)/sizeof(*(fullpath_str)), L"%ls\\%ls", wcp_dir_path, wcp_filename);
+#else
+	swprintf(fullpath_str, sizeof(fullpath_str)/sizeof(*(fullpath_str)), L"%ls/%ls", wcp_dir_path, wcp_filename);
+#endif
 
 	/* Open the file for writing */
 	stream = fileOpen_Wide(fullpath_str, L"w", cast_handle->slout_hdl);
@@ -100,13 +112,15 @@ int PT_DECLSPEC valsSave(PT_HANDLE *hp_vals, wchar_t *wcp_dir_path, wchar_t *wcp
 	if (cast_handle->wcp_comment == NULL)
 		fwprintf(stream, L"\n");
 	else
-	{	
-		// Write the comment (preset name) as a UTF-8 encoded string
-		if (pstrCovertWideCharStringToUTF8String_WithAlloc(cast_handle->wcp_comment, &cp_string_utf8, &i_cp_string_utf8_length) != OKAY)
-			return(NOT_OKAY);
-		fprintf(stream, "%s\n", cp_string_utf8);
-		free(cp_string_utf8);
-		cp_string_utf8 = NULL;
+	{
+		/* Write the comment (preset name). This must stay in the stream's WIDE
+		 * orientation: the rest of the file is written with fwprintf, and mixing a
+		 * narrow fprintf into that makes C discard the write entirely (measured).
+		 * That is why a preset saved on Linux had no name line -- and because the
+		 * reader expects that line, every field after it shifted and the file could
+		 * not be loaded back at all. %ls is portable here: %s means narrow in a
+		 * wide printf on glibc, while Windows treats %s as wide. */
+		fwprintf(stream, L"%ls\n", cast_handle->wcp_comment);
 	}
 
     /* Write the double params flags. (Old presets don't have it) */
