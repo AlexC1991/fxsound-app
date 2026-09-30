@@ -362,3 +362,8 @@ build/
 build-appimage/
 FxSound-*.AppImage
 *.AppImage
+
+# JUCE's public Android sample signing key (demo only, irrelevant to Linux)
+third_party/JUCE/examples/Assets/Signing/InAppPurchase.keystore
+third_party/JUCE/examples/DemoRunner/Builds/Android/app/src/main/assets/Signing/InAppPurchase.keystore
+third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/Signing/InAppPurchase.keystore
