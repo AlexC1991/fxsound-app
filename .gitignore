@@ -357,3 +357,8 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
+# Linux build output (added for this fork)
+build/
+build-appimage/
+FxSound-*.AppImage
+*.AppImage
