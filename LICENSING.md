@@ -36,6 +36,29 @@ header. This grants permissive terms for that file on its own; it does **not**
 relicense the project, and any distributed build that links it still falls under
 the AGPL-3.0 as described above.
 
+### Provenance of VoxLimiter.h
+
+`VoxLimiter.h` is not a new invention written for this fork: it is a port of the
+author's own Rust mastering engine, **Vox Audio Engine** (the
+`vox-auto-master-v3` recipe in `VoxAI_Website/services/vox-audio-engine`). The
+design and every limiter constant (threshold −2.0 dB, target −1.0 dB, knee
+2.0 dB, look-ahead 1 ms, release 20 ms) come from that engine, and were carried
+over verbatim.
+
+### Why it exists on Linux
+
+On Windows, FxSound's volume is applied by the operating system at the audio
+endpoint (`IAudioEndpointVolume`, used by
+`sndDevices/sndDevicesVolCallbacks.cpp`), which is *after* the DSP — so a volume
+boost lands where it can be heard. The Linux/PipeWire port has no equivalent
+volume stage, so the only loudness control available (FxSound's own volume) is
+applied inside the DSP, where the engine's normalization absorbs it. Gaining
+volume on Linux was therefore much harder than on Windows.
+
+This limiter restores the missing behaviour, sitting after the DSP and after
+FxSound's own volume. It is the reason a hard boost now produces louder sound
+instead of clipping.
+
 ## Using this fork in your own project
 
 - **As a whole application** (or any binary linking the FxSound code): the

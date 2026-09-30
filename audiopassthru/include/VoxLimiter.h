@@ -27,22 +27,40 @@
 // SOFTWARE.
 //
 // VoxLimiter - a live look-ahead limiter + adaptive normalizer for the FxSound
-// audio path, ported from the user's own mastering engine:
-//   /mnt/A/Github/VoxAI_Website/services/vox-audio-engine/src/dsp.rs
-//   (recipe "vox-auto-master-v3")
+// audio path.
 //
+// PROVENANCE
+// This file is a port of the author's own Rust mastering engine, Vox Audio
+// Engine (recipe vox-auto-master-v3), from its dsp.rs:
+//   VoxAI_Website/services/vox-audio-engine  (github.com/AlexC1991)
+// The Rust engine is the origin of this design and of every constant below -
+// they are carried over verbatim, not re-derived here:
+//   LIMITER_THRESHOLD_DB  -2.0    LIMITER_TARGET_DB  -1.0
+//   LIMITER_KNEE_DB        2.0    LIMITER_LOOKAHEAD_MS 1.0
+//   LIMITER_RELEASE_MS    20.0
 // That recipe is: linked look-ahead limiter -> bass/treble shelves ->
-// normalization to a target peak. The limiter comes FIRST, which is what lets
-// you drive the signal hard and still get louder sound instead of distortion.
-// Its own comment records why -2 dB of drive was chosen over -4.5:
-//   "-4.5 flattened every song by about 2 dB more, which listeners heard as a
-//    muffled mix."
+// normalization to a target peak. The limiter comes FIRST in that order, and
+// that ordering is the whole point: it is what lets you drive a signal hard and
+// still get LOUDER sound instead of distortion.
 //
-// This is applied AFTER FxSound's own EQ/effects (which is where its boost and
-// "sound boost" happen), so a boosted curve is absorbed here instead of
-// clipping at the device.
+// The Rust engine's own comment records why -2 dB of drive was chosen over -4.5:
+//   -4.5 flattened every song by about 2 dB more, which listeners heard as a
+//   muffled mix.
 //
-// Safety: any non-finite sample, or VOX_LIMITER=0, bypasses processing entirely.
+// WHY THIS EXISTS ON LINUX
+// On Windows, FxSound's volume is applied by the OS at the audio endpoint
+// (IAudioEndpointVolume, in sndDevices/sndDevicesVolCallbacks.cpp), i.e. after
+// the DSP, so a boost lands where it can be heard. The Linux/PipeWire port had
+// no equivalent volume stage at all, so the only loudness control - FxSound's
+// own volume - was applied inside the DSP, where the engine's normalization
+// absorbs it. That is why gaining volume was much harder here than on Windows.
+//
+// This limiter restores the missing behaviour: it is applied AFTER the DSP and
+// AFTER FxSound's own volume, so a hard boost (volume above 100%, or a bass /
+// sound-boost curve) is absorbed here instead of clipping at the device.
+//
+// Safety: any non-finite sample is repaired in place, and VOX_LIMITER=0
+// disables processing entirely.
 #pragma once
 
 #include <algorithm>

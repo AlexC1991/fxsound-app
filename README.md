@@ -66,5 +66,32 @@ This project uses the [JUCE](https://juce.com) framework, which is licensed unde
 
 Thanks to [Theremino](https://www.theremino.com) for the valuable contributions they do through major feature enhancements in FxSound.
 
+## Linux port notes (this fork)
+
+### Why the volume limiter exists
+
+On Windows, FxSound's volume is applied by the operating system at the audio
+endpoint (`IAudioEndpointVolume`, via `sndDevices/sndDevicesVolCallbacks.cpp`),
+which sits *after* the DSP - so a volume boost lands where it can be heard.
+
+The Linux/PipeWire port had no equivalent volume stage, so the only loudness
+control available (FxSound's own volume) was applied inside the DSP, where the
+engine's normalization absorbs it. As a result, gaining volume on Linux was
+noticeably harder than on Windows.
+
+`audiopassthru/include/VoxLimiter.h` restores the missing behaviour: a look-ahead
+limiter plus adaptive normalizer applied after the DSP and after FxSound's own
+volume, so a hard boost makes the sound louder instead of clipping. It is a port
+of the author's own Rust mastering engine (Vox Audio Engine,
+`vox-auto-master-v3`), which is where every constant comes from.
+
+Set `VOX_LIMITER=0` to disable it.
+
+### Building
+
+A fresh clone builds with no extra patching. Note that
+`dsp/linux/lc_headers` is a case-insensitivity bridge made of **relative**
+symlinks; regenerate it with `tools/gen-lc-headers.sh` if you add headers.
+
 ## License
 [AGPL v3.0](https://github.com/fxsound2/fxsound-app/blob/main/LICENSE)
