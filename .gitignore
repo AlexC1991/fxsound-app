@@ -380,4 +380,5 @@ third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/googl
 # left out; the capitalised "Work - Reckless (Ranzemyrryya).fac" is kept.
 Resources/Presets/Community/Work - reckless (Ranzemyrryya).fac
 
-dsp/linux/lc_headers/
+# lc_headers IS tracked (see tools/gen-lc-headers.sh): the symlinks are
+# relative, so they work on any checkout. Regenerate if you add headers.

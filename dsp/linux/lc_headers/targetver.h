@@ -1,0 +1,1 @@
+../../Win32Main/targetver.h
