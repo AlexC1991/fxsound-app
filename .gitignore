@@ -373,3 +373,8 @@ third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/Signi
 third_party/JUCE/examples/Assets/google-services.json
 third_party/JUCE/examples/DemoRunner/Builds/Android/app/src/main/assets/google-services.json
 third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/google-services.json
+
+# Two upstream community presets differ only by letter case, which cannot coexist
+# on Windows or macOS filesystems (CodeRook store). The lowercase duplicate is
+# left out; the capitalised "Work - Reckless (Ranzemyrryya).fac" is kept.
+Resources/Presets/Community/Work - reckless (Ranzemyrryya).fac
