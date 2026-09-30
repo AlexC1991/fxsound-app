@@ -19,6 +19,7 @@ methods take the loop lock. The realtime process callback is lock-free.
 
 #include "AudioPassthru.h"
 #include "DfxDsp.h"
+#include "VoxLimiter.h"
 
 #include <pipewire/pipewire.h>
 #include <pipewire/filter.h>
@@ -92,6 +93,14 @@ struct AudioPassthruPrivate
     std::atomic<float> sink_volume{1.0f};
     std::atomic<bool>  sink_muted{false};
 
+    // Vox look-ahead limiter + adaptive normalizer (see VoxLimiter.h). Ported
+    // from the VoxAI mastering engine's "vox-auto-master-v3" recipe. Applied
+    // after the DSP and after FxSound's own volume, so that driving the volume
+    // or a bass/treble boost hard results in LOUDER sound rather than clipping -
+    // the limiter absorbs the peaks the way a mastering chain does.
+    vox::Limiter limiter;
+    int          limiter_rate = 0;          // rate the limiter was prepared for
+
     // Graph model (guarded by the thread-loop lock).
     std::map<uint32_t, NodeInfo> nodes;
     std::map<uint32_t, PortInfo> ports;
@@ -150,20 +159,33 @@ void on_process(void* userdata, struct spa_io_position* position)
         // buffers as 32-bit float internally.
         d->dsp->processAudio(reinterpret_cast<short*>(d->ileave_in.data()),
                              reinterpret_cast<short*>(d->ileave_out.data()), (int)n, 0);
-        // Apply FxSound's own volume AFTER the DSP. The engine's loudness
-        // boost/limiter normalises its output to a fixed level, so a gain
-        // applied before it is simply undone; post-DSP it is real gain (and
-        // lets the slider turn FxSound down, which it previously could not).
+        // Above 100% the engine has no headroom left (it already normalises to
+        // just below full scale), so a straight multiply would hard-clip. Apply
+        // the requested volume, then let the Vox look-ahead limiter absorb the
+        // peaks below - this is the mastering order (drive first, limiter
+        // after), so a boost makes the sound LOUDER instead of distorted.
         float vol = d->sink_volume.load(std::memory_order_relaxed);
         if (d->sink_muted.load(std::memory_order_relaxed)) vol = 0.0f;
+        for (uint32_t i = 0; i < n * 2; ++i)
+            d->ileave_out[i] *= vol;
+
+        // Vox limiter + adaptive normalizer, always on. This REPLACES upstream's
+        // "Final hard-clip" below: hard-clipping squares off the waveform and is
+        // heard as distortion, whereas a look-ahead limiter rides the gain down
+        // smoothly, so boosting stays loud without breaking up.
+        if (d->limiter_rate != rate) {
+            d->limiter.prepare(rate, kChannels);
+            d->limiter_rate = rate;
+        }
+        {
+            float* chans[kChannels] = { d->ileave_out.data(), d->ileave_out.data() + 1 };
+            // stride 2: channel c starts at offset c in the interleaved buffer
+            d->limiter.processStrided(chans, kChannels, (int)n, 2);
+        }
+
         for (uint32_t i = 0; i < n; ++i) {
-            float l = d->ileave_out[i*2]     * vol;
-            float r = d->ileave_out[i*2 + 1] * vol;
-            // Final hard-clip to prevent digital distortion reaching PipeWire/mixer.
-            if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
-            if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
-            out[0][i] = l;
-            out[1][i] = r;
+            out[0][i] = d->ileave_out[i*2];
+            out[1][i] = d->ileave_out[i*2 + 1];
         }
     } else if (have_in) {
         for (int c = 0; c < kChannels; ++c) std::memcpy(out[c], in[c], n * sizeof(float));
