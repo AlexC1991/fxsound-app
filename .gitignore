@@ -367,3 +367,9 @@ FxSound-*.AppImage
 third_party/JUCE/examples/Assets/Signing/InAppPurchase.keystore
 third_party/JUCE/examples/DemoRunner/Builds/Android/app/src/main/assets/Signing/InAppPurchase.keystore
 third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/Signing/InAppPurchase.keystore
+
+# JUCE's public Firebase demo config for its Android samples (already published
+# in juce-framework/JUCE; not our credentials, and irrelevant to Linux)
+third_party/JUCE/examples/Assets/google-services.json
+third_party/JUCE/examples/DemoRunner/Builds/Android/app/src/main/assets/google-services.json
+third_party/JUCE/extras/AudioPluginHost/Builds/Android/app/src/main/assets/google-services.json
