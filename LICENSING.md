@@ -39,11 +39,11 @@ the AGPL-3.0 as described above.
 ### Provenance of VoxLimiter.h
 
 `VoxLimiter.h` is not a new invention written for this fork: it is a port of the
-author's own Rust mastering engine, **Vox Audio Engine** (the
-`vox-auto-master-v3` recipe in `VoxAI_Website/services/vox-audio-engine`). The
-design and every limiter constant (threshold −2.0 dB, target −1.0 dB, knee
-2.0 dB, look-ahead 1 ms, release 20 ms) come from that engine, and were carried
-over verbatim.
+author's own Rust audio engine, written as the mastering backend for their
+website (the `vox-auto-master-v3` processing recipe, used to master the audio
+tracks users create on that site). The design and every limiter constant
+(threshold −2.0 dB, target −1.0 dB, knee 2.0 dB, look-ahead 1 ms, release
+20 ms) come from that engine, and were carried over verbatim.
 
 ### Why it exists on Linux
 

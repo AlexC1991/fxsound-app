@@ -30,14 +30,15 @@
 // audio path.
 //
 // PROVENANCE
-// This file is a port of the author's own Rust mastering engine, Vox Audio
-// Engine (recipe vox-auto-master-v3), from its dsp.rs:
-//   VoxAI_Website/services/vox-audio-engine  (github.com/AlexC1991)
-// The Rust engine is the origin of this design and of every constant below -
-// they are carried over verbatim, not re-derived here:
+// This file is a port of the author's own Rust audio engine, written as the
+// mastering backend for their website (the vox-auto-master-v3 processing
+// recipe). The Rust engine is the origin of this design and of every constant
+// below - they are carried over verbatim, not re-derived here:
 //   LIMITER_THRESHOLD_DB  -2.0    LIMITER_TARGET_DB  -1.0
 //   LIMITER_KNEE_DB        2.0    LIMITER_LOOKAHEAD_MS 1.0
 //   LIMITER_RELEASE_MS    20.0
+// That engine is used to master the audio tracks users make on the site, so its
+// chain is the reference this port follows rather than anything invented here.
 // That recipe is: linked look-ahead limiter -> bass/treble shelves ->
 // normalization to a target peak. The limiter comes FIRST in that order, and
 // that ordering is the whole point: it is what lets you drive a signal hard and

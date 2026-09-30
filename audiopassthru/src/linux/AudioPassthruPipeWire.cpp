@@ -95,12 +95,13 @@ struct AudioPassthruPrivate
 
     // Vox look-ahead limiter + adaptive normalizer (see VoxLimiter.h).
     //
-    // Ported from the author's own Rust mastering engine (Vox Audio Engine,
-    // recipe vox-auto-master-v3); every constant comes from there. It runs
-    // AFTER the DSP and AFTER FxSound's own volume because the Linux port had no
-    // volume stage at all - Windows gets one for free from IAudioEndpointVolume,
-    // applied post-DSP. That is why gaining volume is harder here, and why a
-    // boost must be absorbed here rather than clipped at the device.
+    // Ported from the author's own Rust audio engine (the mastering backend for
+    // their website, vox-auto-master-v3 recipe); every constant comes from there.
+    // It runs AFTER the DSP and AFTER FxSound's own volume because the Linux port
+    // had no volume stage at all - Windows gets one for free from
+    // IAudioEndpointVolume, applied post-DSP. That is why gaining volume is
+    // harder here, and why a boost must be absorbed here rather than clipped at
+    // the device.
     vox::Limiter limiter;
     int          limiter_rate = 0;          // rate the limiter was prepared for
 

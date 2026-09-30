@@ -82,8 +82,9 @@ noticeably harder than on Windows.
 `audiopassthru/include/VoxLimiter.h` restores the missing behaviour: a look-ahead
 limiter plus adaptive normalizer applied after the DSP and after FxSound's own
 volume, so a hard boost makes the sound louder instead of clipping. It is a port
-of the author's own Rust mastering engine (Vox Audio Engine,
-`vox-auto-master-v3`), which is where every constant comes from.
+of the author's own Rust audio engine, the mastering backend written for their
+website (the `vox-auto-master-v3` recipe), which is where every constant comes
+from.
 
 Set `VOX_LIMITER=0` to disable it.
 
