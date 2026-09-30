@@ -24,6 +24,8 @@ methods take the loop lock. The realtime process callback is lock-free.
 #include <pipewire/filter.h>
 #include <pipewire/extensions/metadata.h>
 #include <spa/utils/json.h>
+#include <spa/pod/iter.h>       // spa_pod_get_float / _bool, spa_pod_object_find_prop
+#include <spa/param/props.h>    // SPA_PROP_volume / SPA_PROP_mute
 
 #include <atomic>
 #include <cstring>
@@ -57,6 +59,7 @@ struct AudioPassthruPrivate
     pw_core*        core = nullptr;
     pw_filter*      filter = nullptr;
     pw_proxy*       sink_proxy = nullptr;     // the routable null-audio-sink "FxSound"
+    pw_node*        sink_node = nullptr;      // bound to the FxSound node, for its volume
     pw_registry*    registry = nullptr;
     spa_hook        registry_listener{};
     spa_hook        filter_listener{};
@@ -79,6 +82,15 @@ struct AudioPassthruPrivate
     DfxDsp* dsp = nullptr;
     std::atomic<bool> muted{false};
     AudioPassthruCallback* callback = nullptr;
+
+    // FxSound's own volume, applied AFTER the DSP (see on_process). The sink's
+    // monitor deliberately carries unprocessed, unity-gain audio
+    // (monitor.channel-volumes=false) so the DSP always sees full-level input;
+    // the volume is read from the sink node and multiplied in post-DSP, which
+    // is where Windows' FxSound applies it too.
+    spa_hook          sink_node_listener{};
+    std::atomic<float> sink_volume{1.0f};
+    std::atomic<bool>  sink_muted{false};
 
     // Graph model (guarded by the thread-loop lock).
     std::map<uint32_t, NodeInfo> nodes;
@@ -138,9 +150,15 @@ void on_process(void* userdata, struct spa_io_position* position)
         // buffers as 32-bit float internally.
         d->dsp->processAudio(reinterpret_cast<short*>(d->ileave_in.data()),
                              reinterpret_cast<short*>(d->ileave_out.data()), (int)n, 0);
+        // Apply FxSound's own volume AFTER the DSP. The engine's loudness
+        // boost/limiter normalises its output to a fixed level, so a gain
+        // applied before it is simply undone; post-DSP it is real gain (and
+        // lets the slider turn FxSound down, which it previously could not).
+        float vol = d->sink_volume.load(std::memory_order_relaxed);
+        if (d->sink_muted.load(std::memory_order_relaxed)) vol = 0.0f;
         for (uint32_t i = 0; i < n; ++i) {
-            float l = d->ileave_out[i*2];
-            float r = d->ileave_out[i*2 + 1];
+            float l = d->ileave_out[i*2]     * vol;
+            float r = d->ileave_out[i*2 + 1] * vol;
             // Final hard-clip to prevent digital distortion reaching PipeWire/mixer.
             if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
             if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
@@ -306,6 +324,65 @@ const struct pw_metadata_events metadata_events = {
     .property = metadata_property,
 };
 
+// ---- FxSound sink node: read its volume/mute ------------------------------
+// The sink's monitor is unity-gain (monitor.channel-volumes=false), so the
+// node's Props[volume] is never applied by the graph. We mirror it here and
+// apply it post-DSP in on_process.
+void sink_node_param(void* data, int /*seq*/, uint32_t id, uint32_t /*index*/,
+                     uint32_t /*next*/, const struct spa_pod* param)
+{
+    auto* d = static_cast<AudioPassthruPrivate*>(data);
+    if (!param || id != SPA_PARAM_Props || !spa_pod_is_object(param)) return;
+
+    const auto* obj = (const struct spa_pod_object*)param;
+    // NB: SPA_PROP_volume is the *base* volume and stays 1.0 for this adapter;
+    // the volume a user actually sets lives in the per-channel
+    // SPA_PROP_channelVolumes array. Prefer that, and fall back to the scalar.
+    float vol = -1.0f;
+    const struct spa_pod_prop* p =
+        spa_pod_object_find_prop(obj, NULL, SPA_PROP_channelVolumes);
+    if (p) {
+        uint32_t n = 0;
+        const float* vals = (const float*)spa_pod_get_array(&p->value, &n);
+        if (vals && n > 0) {
+            float sum = 0.0f;
+            for (uint32_t i = 0; i < n; ++i) sum += vals[i];
+            vol = sum / (float)n;
+        }
+    }
+    if (vol < 0.0f) {
+        p = spa_pod_object_find_prop(obj, NULL, SPA_PROP_volume);
+        if (p) {
+            float v = 1.0f;
+            if (spa_pod_get_float(&p->value, &v) == 0 && v >= 0.0f) vol = v;
+        }
+    }
+    if (vol >= 0.0f) d->sink_volume.store(vol, std::memory_order_relaxed);
+
+    p = spa_pod_object_find_prop(obj, NULL, SPA_PROP_mute);
+    if (p) {
+        bool m = false;
+        if (spa_pod_get_bool(&p->value, &m) == 0)
+            d->sink_muted.store(m, std::memory_order_relaxed);
+    }
+}
+
+const struct pw_node_events sink_node_events = {
+    .version = PW_VERSION_NODE_EVENTS,
+    .param = sink_node_param,
+};
+
+void bindSinkNode(AudioPassthruPrivate* d, uint32_t id)
+{
+    if (d->sink_node) return;
+    d->sink_node = static_cast<pw_node*>(pw_registry_bind(
+        d->registry, id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
+    if (!d->sink_node) return;
+    pw_node_add_listener(d->sink_node, &d->sink_node_listener, &sink_node_events, d);
+    uint32_t ids[1] = { SPA_PARAM_Props };
+    pw_node_subscribe_params(d->sink_node, ids, 1);
+}
+
 // ---- registry listener --------------------------------------------------
 void registry_global(void* data, uint32_t id, uint32_t /*perm*/, const char* type,
                      uint32_t /*ver*/, const struct spa_dict* props)
@@ -324,8 +401,10 @@ void registry_global(void* data, uint32_t id, uint32_t /*perm*/, const char* typ
         ni.media_class = mc ? mc : "";
         d->nodes[id] = ni;
         // Our own routable null-sink front-end.
-        if (mc && spa_streq(mc, "Audio/Sink") && ni.name == "FxSound")
+        if (mc && spa_streq(mc, "Audio/Sink") && ni.name == "FxSound") {
             d->sink_node_id = id;
+            bindSinkNode(d, id);   // read its volume so the slider works
+        }
         if (mc && spa_streq(mc, "Audio/Sink") && ni.name != "FxSound") {
             if (d->callback) d->callback->onSoundDeviceChange();
         }
@@ -407,6 +486,7 @@ AudioPassthru::~AudioPassthru()
     for (auto* p : data_->monitor_links) pw_proxy_destroy(p);
     clearLinks(data_);
     if (data_->metadata) pw_proxy_destroy((pw_proxy*)data_->metadata);
+    if (data_->sink_node) pw_proxy_destroy((pw_proxy*)data_->sink_node);
     if (data_->sink_proxy) pw_proxy_destroy(data_->sink_proxy);
     if (data_->registry) pw_proxy_destroy((pw_proxy*)data_->registry);
     if (data_->filter)   pw_filter_destroy(data_->filter);
